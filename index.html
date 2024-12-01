@@ -1,29 +1,67 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>Platformer Game</title>
 	<style>
-		body, html {
+		body,
+		html {
 			margin: 0;
 			padding: 0;
 			overflow: hidden;
 			width: 100%;
 			height: 100%;
 		}
+
 		canvas {
 			display: block;
 			background-color: #f0f0f0;
 		}
+
+		#smallScreenMessage {
+			display: none;
+			position: absolute;
+			top: 50%;
+			left: 50%;
+			transform: translate(-50%, -50%);
+			text-align: center;
+			font-family: Arial, sans-serif;
+			font-size: 20px;
+			color: #333;
+		}
 	</style>
 </head>
+
 <body>
+	<div id="smallScreenMessage">
+		<p>This experience is best on larger screens.</p>
+		<p>Please use a device with a screen size larger than 1024x800.</p>
+	</div>
 	<canvas id="gameCanvas"></canvas>
 
 	<script>
-		// Canvas setup
+
 		const canvas = document.getElementById("gameCanvas");
+		const smallScreenMessage = document.getElementById("smallScreenMessage");
+		console.log(window.innerWidth, window.innerHeight);
+
+		// Check screen size
+		function checkScreenSize() {
+			if (window.innerWidth < 900 || window.innerHeight < 700) {
+				canvas.style.display = "none";
+				smallScreenMessage.style.display = "block";
+			} else {
+				canvas.style.display = "block";
+				smallScreenMessage.style.display = "none";
+			}
+		}
+
+		// Add resize event listener to handle changes in screen size
+		window.addEventListener("resize", checkScreenSize);
+		checkScreenSize();
+		// Canvas setup
 		const ctx = canvas.getContext("2d");
 
 		function resizeCanvas() {
@@ -96,6 +134,12 @@
 				text: "Congratulations! You now have a job! \nWork hard so you achieve your goals and dreams. \nGood luck!",
 				scene: 1,
 				visible: false,
+				timeoutId: null
+			},
+			{
+				text: "Its been an year since you started working. You now have a job and a place to live, explore the game and achieve more",
+				scene: 2,
+				visible: true,
 				timeoutId: null
 			}
 		];
@@ -356,4 +400,5 @@
 		}
 	</script>
 </body>
+
 </html>
