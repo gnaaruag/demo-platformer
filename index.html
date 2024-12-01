@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Platformer Game</title>
+	<style>
+		body, html {
+			margin: 0;
+			padding: 0;
+			overflow: hidden;
+			width: 100%;
+			height: 100%;
+		}
+		canvas {
+			display: block;
+			background-color: #f0f0f0;
+		}
+	</style>
+</head>
+<body>
+	<canvas id="gameCanvas"></canvas>
+
+	<script>
+		// Canvas setup
+		const canvas = document.getElementById("gameCanvas");
+		const ctx = canvas.getContext("2d");
+
+		function resizeCanvas() {
+			canvas.width = window.innerWidth;
+			canvas.height = window.innerHeight;
+		}
+		window.addEventListener("resize", resizeCanvas);
+		resizeCanvas();
+
+		// Game constants
+		const GRAVITY = 0.5;
+		const JUMP_SPEED = -10;
+		const WALK_SPEED = 5;
+		const CHARACTER_PADDING = 200;
+		const GROUND_HEIGHT = 50;
+		const GROUND_OFFSET = 40;
+
+		// Character variables
+		const CHAR_WIDTH = 70;
+		const CHAR_HEIGHT = 100;
+		let charX = CHARACTER_PADDING;
+		let charY = canvas.height - CHAR_HEIGHT - GROUND_HEIGHT + GROUND_OFFSET;
+		let charVelX = 0;
+		let charVelY = 0;
+		let onGround = true;
+		let isFacingRight = true;
+
+		// Scene and background variables
+		let currentScene = 0;
+		const scenes = ["assets/backdrops/2.webp", "assets/backdrops/1.webp", "assets/backdrops/3.webp"];
+		const bgImages = [];
+		let imagesLoaded = 0;
+
+		// Transition variables
+		let transitioning = false;
+		let gameOver = false;
+
+		// Car variables
+		const CAR_WIDTH = 300; // 3x size
+		const CAR_HEIGHT = 150; // 3x size
+		let carX = canvas.width; // Start off-screen
+		const carY = canvas.height - CAR_HEIGHT - GROUND_HEIGHT + GROUND_OFFSET;
+		const CAR_SPEED = 10;
+		let carVisible = false;
+
+		// NPC variables
+		const NPC_WIDTH = 70;
+		const NPC_HEIGHT = 100;
+		let npcX = canvas.width - 150; // NPC at the right edge of Scene 2
+		const npcY = canvas.height - NPC_HEIGHT - GROUND_HEIGHT + GROUND_OFFSET;
+		let npcVisible = true;
+		let npcInteracted = false;
+		const PROXIMITY_THRESHOLD = 200;
+
+		// Dialogue boxes
+		const dialogueBoxes = [
+			{
+				text: "Oh No! You just graduated and have no job! Use the arrow keys to move and jump around. Explore the game, live a life.",
+				scene: 0,
+				visible: true,
+				timeoutId: null
+			},
+			{
+				text: "*A wild job offer appeared!* \nGo talk to your boss to know more.",
+				scene: 1,
+				visible: false,
+				timeoutId: null
+			},
+			{
+				text: "Congratulations! You now have a job! \nWork hard so you achieve your goals and dreams. \nGood luck!",
+				scene: 1,
+				visible: false,
+				timeoutId: null
+			}
+		];
+
+		// Sprites
+		const rightSprites = [
+			"assets/char/r1.png", "assets/char/r2.png", "assets/char/r3.png",
+			"assets/char/r4.png", "assets/char/r5.png"
+		];
+		const leftSprites = [
+			"assets/char/l1.png", "assets/char/l2.png", "assets/char/l3.png",
+			"assets/char/l4.png", "assets/char/l5.png"
+		];
+		const rightImages = rightSprites.map(path => {
+			const img = new Image();
+			img.src = path;
+			return img;
+		});
+		const leftImages = leftSprites.map(path => {
+			const img = new Image();
+			img.src = path;
+			return img;
+		});
+		const npcSprite = new Image();
+		npcSprite.src = "assets/char/int3.png";
+		const carSprite = new Image();
+		carSprite.src = "assets/vehicle/1.png";
+
+		// Animation variables
+		let animationFrame = 0;
+		let animationTimer = 0;
+		const ANIMATION_SPEED = 100;
+
+		// Key states
+		const keys = {};
+		window.addEventListener("keydown", e => { keys[e.key] = true; });
+		window.addEventListener("keyup", e => { keys[e.key] = false; });
+
+		// Load background images
+		scenes.forEach((src, index) => {
+			const img = new Image();
+			img.src = src;
+			img.onload = () => {
+				imagesLoaded++;
+				bgImages[index] = img;
+				if (imagesLoaded === scenes.length) {
+					showDialogueBox(dialogueBoxes[0]);
+					gameLoop();
+				}
+			};
+			img.onerror = () => {
+				console.error(`Failed to load image: ${src}`);
+				bgImages[index] = null;
+			};
+		});
+
+		// Show dialogue box
+		function showDialogueBox(box) {
+			box.visible = true;
+			if (box.timeoutId) clearTimeout(box.timeoutId);
+			box.timeoutId = setTimeout(() => {
+				box.visible = false;
+			}, 5000);
+		}
+
+		// Trigger car animation
+		function triggerCarAnimation() {
+			carVisible = true;
+		}
+
+		// Trigger black screen transition with delay
+		function triggerBlackScreenTransition() {
+			setTimeout(() => {
+				transitioning = true;
+				setTimeout(() => {
+					transitioning = false;
+					currentScene++;
+					charX = CHARACTER_PADDING;
+
+					// Start car animation after 2 seconds in Scene 3
+					setTimeout(triggerCarAnimation, 2000);
+				}, 3000); // Black screen duration
+			}, 2000); // 2-second delay
+		}
+
+		// Handle NPC interaction and transition delay
+		function handleNpcInteraction() {
+			if (
+				currentScene === 1 &&
+				!npcInteracted &&
+				Math.abs(charX - npcX) <= PROXIMITY_THRESHOLD
+			) {
+				npcInteracted = true;
+				const jobDialogue = dialogueBoxes.find(box => box.text.includes("Congratulations"));
+				if (jobDialogue) showDialogueBox(jobDialogue);
+
+				// Blink NPC and make it disappear
+				let blinkCount = 0;
+				const blinkInterval = setInterval(() => {
+					npcVisible = !npcVisible;
+					blinkCount++;
+					if (blinkCount >= 6) {
+						clearInterval(blinkInterval);
+						npcVisible = false;
+						triggerBlackScreenTransition();
+					}
+				}, 300);
+			}
+		}
+
+		// Handle scene transitions
+		function handleSceneTransition() {
+			if (charX + CHAR_WIDTH >= canvas.width - CHARACTER_PADDING) {
+				if (currentScene === 0) {
+					currentScene++;
+					charX = CHARACTER_PADDING;
+					const nextDialogue = dialogueBoxes.find(box => box.scene === currentScene && box.text.includes("wild job"));
+					if (nextDialogue) showDialogueBox(nextDialogue);
+				}
+			}
+		}
+
+		// Check car collision
+		function checkCarCollision() {
+			if (
+				carVisible &&
+				charX < carX + CAR_WIDTH &&
+				charX + CHAR_WIDTH > carX &&
+				charY < carY + CAR_HEIGHT &&
+				charY + CHAR_HEIGHT > carY
+			) {
+				gameOver = true;
+				carVisible = false;
+			}
+		}
+
+		// Game loop
+		function gameLoop() {
+			if (!transitioning && !gameOver) {
+				if (keys["ArrowLeft"]) {
+					charVelX = -WALK_SPEED;
+					isFacingRight = false;
+					animationTimer += 16;
+					if (animationTimer >= ANIMATION_SPEED) {
+						animationFrame = (animationFrame + 1) % leftImages.length;
+						animationTimer = 0;
+					}
+				} else if (keys["ArrowRight"]) {
+					charVelX = WALK_SPEED;
+					isFacingRight = true;
+					animationTimer += 16;
+					if (animationTimer >= ANIMATION_SPEED) {
+						animationFrame = (animationFrame + 1) % rightImages.length;
+						animationTimer = 0;
+					}
+				} else {
+					charVelX = 0;
+					animationFrame = 0;
+					animationTimer = 0;
+				}
+
+				if ((keys[" "] || keys["ArrowUp"]) && onGround) {
+					charVelY = JUMP_SPEED;
+					onGround = false;
+				}
+
+				charVelY += GRAVITY;
+
+				charX += charVelX;
+				charY += charVelY;
+
+				if (charY + CHAR_HEIGHT > canvas.height - GROUND_HEIGHT + GROUND_OFFSET) {
+					charY = canvas.height - CHAR_HEIGHT - GROUND_HEIGHT + GROUND_OFFSET;
+					charVelY = 0;
+					onGround = true;
+				}
+
+				handleNpcInteraction();
+				handleSceneTransition();
+
+				// Move car
+				if (carVisible) {
+					carX -= CAR_SPEED;
+					checkCarCollision();
+				}
+			}
+
+			draw();
+			requestAnimationFrame(gameLoop);
+		}
+
+		// Draw everything
+		function draw() {
+			if (gameOver) {
+				ctx.fillStyle = "black";
+				ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+				ctx.fillStyle = "red";
+				ctx.font = "30px Arial";
+				ctx.textAlign = "center";
+				ctx.fillText("GAME OVER!", canvas.width / 2, canvas.height / 2 - 30);
+
+				ctx.fillStyle = "white";
+				ctx.font = "20px Arial";
+				ctx.fillText("Looks like insurance would've been a great idea right about now!", canvas.width / 2, canvas.height / 2 + 10);
+				return;
+			}
+
+			if (transitioning) {
+				ctx.fillStyle = "black";
+				ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+				ctx.fillStyle = "white";
+				ctx.font = "30px Arial";
+				ctx.textAlign = "center";
+				ctx.fillText("1 year later", canvas.width / 2, canvas.height / 2);
+				return;
+			}
+
+			if (bgImages[currentScene]) {
+				ctx.drawImage(bgImages[currentScene], 0, 0, canvas.width, canvas.height);
+			} else {
+				ctx.fillStyle = currentScene === 1 ? "lightblue" : "lightgreen";
+				ctx.fillRect(0, 0, canvas.width, canvas.height);
+			}
+
+			if (currentScene === 1 && npcVisible && npcSprite) {
+				ctx.drawImage(npcSprite, npcX, npcY, NPC_WIDTH, NPC_HEIGHT);
+			}
+
+			const sprites = isFacingRight ? rightImages : leftImages;
+			const sprite = sprites[animationFrame];
+			if (sprite) ctx.drawImage(sprite, charX, charY, CHAR_WIDTH, CHAR_HEIGHT);
+
+			if (carVisible && carSprite) {
+				ctx.drawImage(carSprite, carX, carY, CAR_WIDTH, CAR_HEIGHT);
+			}
+
+			ctx.fillStyle = "black";
+			ctx.fillRect(0, canvas.height - GROUND_HEIGHT + GROUND_OFFSET, canvas.width, GROUND_HEIGHT);
+
+			dialogueBoxes.forEach(box => {
+				if (box.visible && box.scene === currentScene) {
+					ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
+					ctx.fillRect(50, 20, canvas.width - 100, 60);
+
+					ctx.strokeStyle = "white";
+					ctx.lineWidth = 2;
+					ctx.strokeRect(50, 20, canvas.width - 100, 60);
+
+					ctx.fillStyle = "white";
+					ctx.font = "16px Arial";
+					ctx.textAlign = "left";
+					ctx.textBaseline = "top";
+					ctx.fillText(box.text, 60, 30);
+				}
+			});
+		}
+	</script>
+</body>
+</html>
